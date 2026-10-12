@@ -1,5 +1,5 @@
 """
-7주차 1번 수업: 사이드바 필터 추가 및 집단 비교 영역 추가
+7주차 1번 수업: 사이드바 필터 추가 및 집단 비교 영역, 드릴다운 영역 추가
 6주차 시각화 리포트와 같은 형태입니다. 오늘 여기에 필터를 붙여 대시보드로 만듭니다.
 """
 import sqlite3
@@ -255,3 +255,76 @@ fig_comp_bar = px.bar(
 )
 fig_comp_bar.update_layout(yaxis_title="단계 전환율 (%)", xaxis_title="")
 comp_right.plotly_chart(fig_comp_bar, width="stretch")
+
+st.divider()
+
+# ------------------------------------------------------------
+# 5. 드릴다운 영역: 언제부터, 무엇 때문일까
+# ------------------------------------------------------------
+st.subheader("드릴다운: 언제부터, 무엇 때문일까")
+
+dd_col1, dd_col2 = st.columns(2)
+
+available_groups = sorted(f[col_name].unique())
+selected_sub_group = dd_col1.selectbox("자세히 볼 집단", available_groups)
+
+step_options = [
+    "방문 → 식당조회",
+    "식당조회 → 장바구니",
+    "장바구니 → 결제시작",
+    "결제시작 → 주문"
+]
+selected_step_option = dd_col2.selectbox("단계", step_options)
+
+# 단계 매핑 설정 (현재 단계, 직전 단계 컬럼명)
+step_mapping = {
+    "방문 → 식당조회": ("조회세션", "세션수"),
+    "식당조회 → 장바구니": ("장바구니세션", "조회세션"),
+    "장바구니 → 결제시작": ("결제시작세션", "장바구니세션"),
+    "결제시작 → 주문": ("주문세션", "결제시작세션")
+}
+curr_col, prev_col = step_mapping[selected_step_option]
+
+# 다른 축 결정 (플랫폼이면 유입경로, 유입경로면 플랫폼)
+other_col = "유입경로" if col_name == "플랫폼" else "플랫폼"
+
+# 차트 ① 데이터 준비
+df_drill = f[f[col_name] == selected_sub_group].groupby(["주시작일", other_col])[[curr_col, prev_col]].sum().reset_index()
+df_drill["전환율"] = df_drill.apply(
+    lambda row: (row[curr_col] / row[prev_col] * 100) if row[prev_col] > 0 else None, axis=1
+)
+
+fig_drill1 = px.line(
+    df_drill,
+    x="주시작일",
+    y="전환율",
+    color=other_col,
+    markers=True,
+    title=f"① {selected_sub_group}의 주별 {selected_step_option} 전환율 — {other_col}별로 쪼개 보기"
+)
+fig_drill1.update_layout(yaxis_title="전환율 (%)", xaxis_title="")
+st.plotly_chart(fig_drill1, width="stretch")
+st.caption("모든 갈래가 같은 시점에 함께 움직였다면, 그 축은 원인이 아닙니다.")
+
+# 차트 ② 데이터 준비 (결제실패 주별 집계: 고른 집단 vs 그 외)
+df_fail_base = f.copy()
+df_fail_base["그룹분류"] = df_fail_base[col_name].apply(
+    lambda x: selected_sub_group if x == selected_sub_group else "그 외"
+)
+
+df_fail = df_fail_base.groupby(["주시작일", "그룹분류"])["결제실패"].sum().reset_index()
+
+color_map = {selected_sub_group: "#d62728", "그 외": "#7f7f7f"}
+
+fig_drill2 = px.bar(
+    df_fail,
+    x="주시작일",
+    y="결제실패",
+    color="그룹분류",
+    barmode="stack",
+    color_discrete_map=color_map,
+    title=f"② 주별 결제 실패 건수 ({selected_sub_group} vs 그 외)"
+)
+fig_drill2.update_layout(yaxis_title="결제 실패 건수", xaxis_title="")
+st.plotly_chart(fig_drill2, width="stretch")
+st.caption("문제가 생긴 시점과 함께 움직였다면 원인 후보입니다. 함께 움직였다고 원인이 확정되지는 않습니다.")

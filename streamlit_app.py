@@ -1,5 +1,5 @@
 """
-7주차 1번 수업: 사이드바 필터 추가
+7주차 1번 수업: 사이드바 필터 추가 및 집단 비교 영역 추가
 6주차 시각화 리포트와 같은 형태입니다. 오늘 여기에 필터를 붙여 대시보드로 만듭니다.
 """
 import sqlite3
@@ -165,3 +165,93 @@ if not ws.empty and ws["주문전환율"].max() > 0:
     fig3.update_xaxes(range=[0, ws["주문전환율"].max() * 1.2])
 fig3.update_layout(xaxis_title="주문 전환율 (%)", yaxis_title="")
 st.plotly_chart(fig3, width="stretch")
+
+st.divider()
+
+# ------------------------------------------------------------
+# 4. 집단 비교 영역
+# ------------------------------------------------------------
+st.subheader("집단 비교")
+group_col_map = {"플랫폼": "플랫폼", "유입경로": "유입경로"}
+selected_group = st.radio("비교 기준", ["플랫폼", "유입경로"], horizontal=True)
+col_name = group_col_map[selected_group]
+
+# 집단별 5단계 세션 수 집계
+group_agg = f.groupby(col_name)[["세션수", "조회세션", "장바구니세션", "결제시작세션", "주문세션"]].sum().reset_index()
+
+# 세션 수가 500개 미만인 집단 확인
+low_session_groups = group_agg[group_agg["세션수"] < 500][col_name].tolist()
+if low_session_groups:
+    st.caption(f"⚠️ 세션 수가 500개 미만인 집단({', '.join(low_session_groups)})이 있어 값이 크게 흔들릴 수 있습니다.")
+
+# 누적 전환율 퍼널용 데이터 변환 (첫 단계 대비 %)
+funnel_records = []
+for _, row in group_agg.iterrows():
+    g_name = row[col_name]
+    base_session = row["세션수"]
+    stages = [
+        ("1.방문", row["세션수"], base_session),
+        ("2.식당조회", row["조회세션"], base_session),
+        ("3.장바구니", row["장바구니세션"], base_session),
+        ("4.결제시작", row["결제시작세션"], base_session),
+        ("5.주문완료", row["주문세션"], base_session),
+    ]
+    for stage_name, val, base in stages:
+        pct = (val / base * 100) if base else 0
+        funnel_records.append({
+            col_name: g_name,
+            "단계": stage_name,
+            "누적전환율": round(pct, 1),
+            "세션수": val
+        })
+df_funnel = pd.DataFrame(funnel_records)
+
+# 단계 전환율(직전 단계 대비 %) 막대용 데이터 변환
+step_conversion_records = []
+for _, row in group_agg.iterrows():
+    g_name = row[col_name]
+    s1, s2, s3, s4, s5 = row["세션수"], row["조회세션"], row["장바구니세션"], row["결제시작세션"], row["주문세션"]
+    
+    transitions = [
+        ("방문 → 조회", s2, s1),
+        ("조회 → 장바구니", s3, s2),
+        ("장바구니 → 결제시작", s4, s3),
+        ("결제시작 → 주문완료", s5, s4)
+    ]
+    
+    for t_name, current_val, prev_val in transitions:
+        step_rate = (current_val / prev_val * 100) if prev_val else 0
+        step_conversion_records.append({
+            col_name: g_name,
+            "단계전환": t_name,
+            "단계전환율": round(step_rate, 1),
+            "기준세션수": prev_val
+        })
+df_step = pd.DataFrame(step_conversion_records)
+
+comp_left, comp_right = st.columns(2)
+
+# 왼쪽: 누적 전환율 퍼널
+fig_comp_funnel = px.funnel(
+    df_funnel,
+    x="누적전환율",
+    y="단계",
+    color=col_name,
+    title=f"집단별 누적 전환율 퍼널 ({selected_group} 기준)",
+    hover_data=["세션수"]
+)
+comp_left.plotly_chart(fig_comp_funnel, width="stretch")
+
+# 오른쪽: 단계 전환율 막대 (barmode="group")
+fig_comp_bar = px.bar(
+    df_step,
+    x="단계전환",
+    y="단계전환율",
+    color=col_name,
+    barmode="group",
+    text_auto=".1f",
+    title=f"집단별 단계 전환율 ({selected_group} 기준)",
+    hover_data=["기준세션수"]
+)
+fig_comp_bar.update_layout(yaxis_title="단계 전환율 (%)", xaxis_title="")
+comp_right.plotly_chart(fig_comp_bar, width="stretch")

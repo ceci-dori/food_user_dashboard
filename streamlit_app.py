@@ -142,6 +142,73 @@ c1.metric("세션 수", f"{t['세션수']:,}개")
 c2.metric("주문 전환율 (방문 → 주문)", f"{rate(t['주문세션'], t['세션수']):.1f}%")
 c3.metric("결제 전환율 (결제 시작 → 주문)", f"{rate(t['주문세션'], t['결제시작세션']):.1f}%")
 
+# ------------------------------------------------------------
+# 규칙 기반 설명 문장 (st.info)
+# ------------------------------------------------------------
+def generate_rule_explanation(f_data, g_data, selected_per, baseline_per):
+    # 선택 기간 주 목록 추출
+    f_weeks = sorted(f_data["주시작일"].unique())
+    if len(f_weeks) < 4:
+        return "비교하려면 선택 기간을 4주 이상 골라 주세요.", "비교하려면 선택 기간을 4주 이상 골라 주세요."
+
+    # 마지막 4주 기간 문자열 (예: "2026-05-04 주부터 4주")
+    last_4_weeks = f_weeks[-4:]
+    period_str = f"{last_4_weeks[0]} 주부터 4주"
+
+    # 마지막 4주 합계 데이터
+    f_last4 = f_data[f_data["주시작일"].isin(last_4_weeks)][["세션수", "결제시작세션", "주문세션"]].sum()
+    cur_order_rate = rate(f_last4["주문세션"], f_last4["세션수"])
+    cur_checkout_rate = rate(f_last4["주문세션"], f_last4["결제시작세션"])
+
+    # 평소 범위 기준 기간 데이터 (g 데이터 기준)
+    g_base = g_data[(g_data["주시작일"] >= baseline_per[0]) & (g_data["주시작일"] <= baseline_per[1])]
+    
+    # 주별로 집계 후 분모가 0인 주 제외
+    weekly_base = g_base.groupby("주시작일")[["세션수", "결제시작세션", "주문세션"]].sum().reset_index()
+    
+    weekly_order_rates = []
+    weekly_checkout_rates = []
+    for _, row in weekly_base.iterrows():
+        if row["세션수"] > 0:
+            weekly_order_rates.append(row["주문세션"] / row["세션수"] * 100)
+        if row["결제시작세션"] > 0:
+            weekly_checkout_rates.append(row["주문세션"] / row["결제시작세션"] * 100)
+
+    if len(weekly_order_rates) < 4 or len(weekly_checkout_rates) < 4:
+        msg = "기준 기간을 이 집단의 데이터가 있는 시기로 옮겨 주세요."
+        return msg, msg
+
+    ord_min, ord_max = min(weekly_order_rates), max(weekly_order_rates)
+    chk_min, chk_max = min(weekly_checkout_rates), max(weekly_checkout_rates)
+
+    # 주문 전환율 문장 생성
+    if cur_order_rate < ord_min:
+        diff = ord_min - cur_order_rate
+        msg_order = f"주문 전환율({cur_order_rate:.1f}%)은 {period_str} 동안 평소 범위({ord_min:.1f}% ~ {ord_max:.1f}%)보다 {diff:.1f}%p 낮습니다."
+    elif cur_order_rate > ord_max:
+        diff = cur_order_rate - ord_max
+        msg_order = f"주문 전환율({cur_order_rate:.1f}%)은 {period_str} 동안 평소 범위({ord_min:.1f}% ~ {ord_max:.1f}%)보다 {diff:.1f}%p 높습니다."
+    else:
+        msg_order = f"주문 전환율({cur_order_rate:.1f}%)은 {period_str} 동안 평소 범위({ord_min:.1f}% ~ {ord_max:.1f}%) 안에 있습니다."
+
+    # 결제 전환율 문장 생성
+    if cur_checkout_rate < chk_min:
+        diff = chk_min - cur_checkout_rate
+        msg_checkout = f"결제 전환율({cur_checkout_rate:.1f}%)은 {period_str} 동안 평소 범위({chk_min:.1f}% ~ {chk_max:.1f}%)보다 {diff:.1f}%p 낮습니다."
+    elif cur_checkout_rate > chk_max:
+        diff = cur_checkout_rate - chk_max
+        msg_checkout = f"결제 전환율({cur_checkout_rate:.1f}%)은 {period_str} 동안 평소 범위({chk_min:.1f}% ~ {chk_max:.1f}%)보다 {diff:.1f}%p 높습니다."
+    else:
+        msg_checkout = f"결제 전환율({cur_checkout_rate:.1f}%)은 {period_str} 동안 평소 범위({chk_min:.1f}% ~ {chk_max:.1f}%) 안에 있습니다."
+
+    return msg_checkout, msg_order
+
+info_checkout, info_order = generate_rule_explanation(f, g, selected_period, selected_baseline_period)
+
+st.info(f"💳 **결제 전환율 분석**: {info_checkout}")
+st.info(f"📈 **주문 전환율 분석**: {info_order}")
+st.caption(f"📏 자동 계산 · 평소 범위 기준 기간 {selected_baseline_period[0]} ~ {selected_baseline_period[1]} (주별 값)")
+
 st.divider()
 
 # ------------------------------------------------------------

@@ -126,6 +126,30 @@ f = g[
     (g["주시작일"] <= selected_period[1])
 ]
 
+# ------------------------------------------------------------
+# 사이드바 데이터 다운로드 버튼 영역
+# ------------------------------------------------------------
+st.sidebar.html("<hr style='margin: 20px 0; border: none; border-top: 1px solid #ddd;'>")
+st.sidebar.subheader("데이터 내려받기")
+
+col_dl1, col_dl2 = st.sidebar.columns(2)
+
+csv_total = df.to_csv(index=False, encoding="utf-8-sig")
+col_dl1.download_button(
+    label="전체 다운로드",
+    data=csv_total,
+    file_name="전체_데이터.csv",
+    mime="text/csv"
+)
+
+csv_filtered = f.to_csv(index=False, encoding="utf-8-sig")
+col_dl2.download_button(
+    label="부분 다운로드",
+    data=csv_filtered,
+    file_name="필터적용_데이터.csv",
+    mime="text/csv"
+)
+
 if f.empty:
     st.warning("선택한 조건에 해당하는 데이터가 없습니다. 필터를 바꿔 주세요.")
     st.stop()

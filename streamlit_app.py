@@ -1,7 +1,3 @@
-"""
-7주차 1번 수업: 사이드바 필터 추가 및 집단 비교 영역, 드릴다운 영역 추가
-6주차 시각화 리포트와 같은 형태입니다. 오늘 여기에 필터를 붙여 대시보드로 만듭니다.
-"""
 import sqlite3
 
 import pandas as pd
@@ -93,6 +89,15 @@ selected_period = st.sidebar.select_slider(
     value=(weeks[0], weeks[-1])
 )
 
+# 평소 범위 기준 기간 추가
+baseline_end_idx = min(25, len(weeks) - 1)
+selected_baseline_period = st.sidebar.select_slider(
+    "평소 범위 기준 기간",
+    options=weeks,
+    value=(weeks[0], weeks[baseline_end_idx]),
+    help="문제가 없던 기간을 고르세요. 이 기간의 주별 값 범위를 '평소 범위'로 씁니다."
+)
+
 # 플랫폼 필터
 platforms = sorted(df["플랫폼"].unique())
 selected_platforms = st.sidebar.multiselect(
@@ -109,12 +114,16 @@ selected_traffic_sources = st.sidebar.multiselect(
     default=traffic_sources
 )
 
-# 필터 적용
-f = df[
-    (df["주시작일"] >= selected_period[0]) &
-    (df["주시작일"] <= selected_period[1]) &
+# 집단 조건만 적용한 데이터 g
+g = df[
     (df["플랫폼"].isin(selected_platforms)) &
     (df["유입경로"].isin(selected_traffic_sources))
+]
+
+# 기존 f는 g에 기간 조건을 더해 만듦
+f = g[
+    (g["주시작일"] >= selected_period[0]) &
+    (g["주시작일"] <= selected_period[1])
 ]
 
 if f.empty:
@@ -211,14 +220,14 @@ step_conversion_records = []
 for _, row in group_agg.iterrows():
     g_name = row[col_name]
     s1, s2, s3, s4, s5 = row["세션수"], row["조회세션"], row["장바구니세션"], row["결제시작세션"], row["주문세션"]
-    
+
     transitions = [
         ("방문 → 조회", s2, s1),
         ("조회 → 장바구니", s3, s2),
         ("장바구니 → 결제시작", s4, s3),
         ("결제시작 → 주문완료", s5, s4)
     ]
-    
+
     for t_name, current_val, prev_val in transitions:
         step_rate = (current_val / prev_val * 100) if prev_val else 0
         step_conversion_records.append({

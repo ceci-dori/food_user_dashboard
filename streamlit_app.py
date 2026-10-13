@@ -76,6 +76,17 @@ def load_data():
 
 df = load_data()                           # 주 × 플랫폼 × 유입 경로별 세션 퍼널
 
+AI_NOTES = {
+    "전체": "전체 주문 전환율은 14.5%이며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 41.4% 구간이다. 다른 집단과 비교해 전반적인 지표의 기준이 된다. 특정 원인은 단정할 수 없으나 사용자들의 상품 탐색 단계에서 이탈이 집중되는 것으로 보인다.",
+    "Android": "안드로이드의 주문 전환율은 14.3%이며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 41.8% 구간이다. 전체 평균과 유사한 수준을 보인다. 2026-04-20 주부터 2026-06-01 주까지 결제 전환율 하락세가 이어졌으며 결제 과정에 문제가 있었던 것으로 보인다.",
+    "iOS": "아이오스의 주문 전환율은 14.8%이며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 40.8% 구간이다. 안드로이드에 비해 주문 전환율이 소폭 높다. 2026-05-04 주와 2026-06-15 주 등에 일시적 하락이 나타났으며 환경적 요인의 영향일 것으로 보인다.",
+    "organic": "오가닉의 주문 전환율은 16.0%이며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 41.4% 구간이다. 전체 집단 대비 세션 수가 가장 많고 전환율도 안정적이다. 자연 유입 사용자의 구매 의도가 비교적 높았던 것으로 보인다.",
+    "paid_ad": "유료 광고의 주문 전환율은 26.3%로 가장 높으며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 53.7% 구간이다. 다른 유입경로에 비해 모든 퍼널 단계의 전환율이 월등히 높다. 타겟팅된 광고를 통해 구매 전환 가능성이 높은 사용자가 유입된 것으로 보인다.",
+    "push": "푸시 유입의 주문 전환율은 3.2%이며 가장 낮은 단계 전환율은 세션수에서 조회세션으로 이어지는 28.4% 구간이다. 다른 경로들과 달리 첫 단계인 조회 구간에서 가장 큰 이탈이 발생한다. 푸시 메시지를 통해 유입된 사용자의 관여도가 상대적으로 낮았던 것으로 보인다.",
+    "referral": "레퍼럴의 주문 전환율은 0.0%이며 가장 낮은 단계 전환율은 조회세션에서 장바구니세션으로 이어지는 23.2% 구간이다. 세션 수가 121개로 500개 미만이며 최종 주문이 발생하지 않았다. 표본 규모가 매우 작아 추가적인 데이터 확인이 필요하다."
+}
+
+AI_SOURCE = "bot: Gemini가 미리 만든 해설 · 전체 기간 기준"
 # ------------------------------------------------------------
 # 사이드바 필터
 # ------------------------------------------------------------
@@ -127,7 +138,7 @@ f = g[
 ]
 
 # ------------------------------------------------------------
-# 사이드바 데이터 다운로드 버튼 영역
+# 사이드바 데이터 다운로드 버튼 영역 (BOM 추가)
 # ------------------------------------------------------------
 st.sidebar.html("<hr style='margin: 20px 0; border: none; border-top: 1px solid #ddd;'>")
 st.sidebar.subheader("데이터 내려받기")
@@ -137,7 +148,7 @@ col_dl1, col_dl2 = st.sidebar.columns(2)
 csv_total = df.to_csv(index=False, encoding="utf-8-sig")
 col_dl1.download_button(
     label="전체 다운로드",
-    data=csv_total,
+    data=csv_total.encode("utf-8-sig"),
     file_name="전체_데이터.csv",
     mime="text/csv"
 )
@@ -145,7 +156,7 @@ col_dl1.download_button(
 csv_filtered = f.to_csv(index=False, encoding="utf-8-sig")
 col_dl2.download_button(
     label="부분 다운로드",
-    data=csv_filtered,
+    data=csv_filtered.encode("utf-8-sig"),
     file_name="필터적용_데이터.csv",
     mime="text/csv"
 )
@@ -227,11 +238,20 @@ def generate_rule_explanation(f_data, g_data, selected_per, baseline_per):
 
     return msg_checkout, msg_order
 
+# ------------------------------------------------------------
+# 규칙 기반 설명 및 전체 AI 해설 영역 (단일 컨테이너)
+# ------------------------------------------------------------
 info_checkout, info_order = generate_rule_explanation(f, g, selected_period, selected_baseline_period)
 
-st.info(f"💳 **결제 전환율 분석**: {info_checkout}")
-st.info(f"📈 **주문 전환율 분석**: {info_order}")
-st.caption(f"📏 자동 계산 · 평소 범위 기준 기간 {selected_baseline_period[0]} ~ {selected_baseline_period[1]} (주별 값)")
+with st.container(border=True):
+    st.markdown("**📏 지금 숫자 읽기**")
+    st.markdown(f"- 💳 **결제 전환율 분석**: {info_checkout}")
+    st.markdown(f"- 📈 **주문 전환율 분석**: {info_order}")
+    st.caption(f"📏 자동 계산 · 평소 범위 기준 기간 {selected_baseline_period[0]} ~ {selected_baseline_period[1]} (주별 값)")
+    
+    with st.expander("🤖 AI 해설 · 전체", expanded=False):
+        st.write(AI_NOTES.get("전체", "이 집단의 해설은 아직 없습니다."))
+    st.caption(AI_SOURCE)
 
 st.divider()
 
@@ -428,3 +448,10 @@ fig_drill2 = px.bar(
 fig_drill2.update_layout(yaxis_title="결제 실패 건수", xaxis_title="")
 st.plotly_chart(fig_drill2, width="stretch")
 st.caption("문제가 생긴 시점과 함께 움직였다면 원인 후보입니다. 함께 움직였다고 원인이 확정되지는 않습니다.")
+
+# 2. 드릴다운 차트 아래에 st.expander 추가
+target = selected_sub_group
+note_text = AI_NOTES.get(target, "이 집단의 해설은 아직 없습니다.")
+with st.expander(f"🤖 AI 해설 · {target}", expanded=False):
+    st.write(note_text)
+st.caption(AI_SOURCE)
